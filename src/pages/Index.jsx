@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getAssetPath } from '../utils/assetHelper';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '../utils/formatCurrency'; // Corrected import path
 import FloatingLabelInput from '../components/FloatingLabelInput';
@@ -560,7 +561,7 @@ const Index = () => {
                 onClick={() => handleTemplateClick(index + 1)}
               >
                 <img
-                  src={`${import.meta.env.BASE_URL}assets/template${index + 1}-preview.png`}
+                  src={getAssetPath(`assets/template${index + 1}-preview.png`)}
                   alt={template.name}
                   className={`w-full ${template.name === "Template 10"
                     ? "h-[38px] w-[57px]"

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import InvoiceTemplate from '../components/InvoiceTemplate';
 import { generatePDF } from '../utils/pdfGenerator';
 import { templates } from '../utils/templateRegistry';
+import { getAssetPath } from '../utils/assetHelper';
 
 const TemplatePage = () => {
   const location = useLocation();
@@ -75,13 +76,13 @@ const TemplatePage = () => {
             <div
               key={index}
               className={`cursor-pointer p-2 border rounded-lg transition-all min-w-[100px] flex flex-col items-center ${currentTemplate === index + 1
-                  ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200"
-                  : "border-gray-200 hover:border-blue-300 hover:shadow-md"
+                ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200"
+                : "border-gray-200 hover:border-blue-300 hover:shadow-md"
                 }`}
               onClick={() => handleTemplateChange(index + 1)}
             >
               <img
-                src={`${import.meta.env.BASE_URL}assets/template${index + 1}-preview.png`}
+                src={getAssetPath(`assets/template${index + 1}-preview.png`)}
                 alt={template.name}
                 className="w-20 h-28 object-cover rounded mb-2 border border-gray-100"
               />
