@@ -1,0 +1,450 @@
+Acknowledgment of Your Request (LOVABLE INVOICE ENHANCE #FEb2026)
+
+Got it. You want the invoice feature enhanced so it:
+
+- Auto-sets a default template (but still allows custom templates for faster filling)
+- Supports Excel attachment import (your invoice format)
+- Supports picture attachment for instant invoice (extract fields from image)
+- Fixes/improves the form structure (layout + validation + maintainability)
+- Sticks to MYR as the default/main currency (already set up)
+- Allows drag-and-drop reordering of services/items
+
+I’ll break this into industry-standard components (Domain Model → Template Engine → Form Architecture → Import Pipelines → Drag/Drop → QA). I’ll show only the relevant code per part, step-by-step, with no full-file dumps.
+
+
+1) Domain Model (the “contract” everything else follows)
+
+Purpose: Before templates/imports/UI, we need one clean invoice object model. This prevents the “form not proper” problem because every UI section maps to a stable schema.
+
+
+1.1 Invoice Draft Shape (single source of truth)
+
+Use a schema so imports (Excel/image) and templates all produce the same output.
+
+```
+TypeScript// src/domain/invoice/invoice.types.ts
+export type CurrencyCode = "MYR"; // keep tight for now (can expand later)
+
+export type LineItem = {
+  id: string;
+  name: string;
+  description?: string;
+  quantity: number;
+  unitPrice: number; // store as number; format later
+};
+
+export type InvoiceDraft = {
+  templateId: string | null;
+  currency: CurrencyCode; // default MYR
+  invoiceNo: string;
+  issueDate: string; // ISO
+  dueDate?: string;
+
+  seller: { name: string; address?: string; phone?: string; email?: string };
+  buyer: { name: string; address?: string; phone?: string; email?: string };
+
+  items: LineItem[];
+
+  notes?: string;
+  terms?: string;
+
+  // derived totals computed (not manually typed)
+};
+```
+
+Why this matters:
+
+- Template = just a pre-filled `InvoiceDraft` (partial)
+- Excel import = adapter that outputs `InvoiceDraft`
+- Image import = adapter that outputs `InvoiceDraft`
+- UI form = editor for `InvoiceDraft`
+
+
+2) Currency Guardrail (MYR is the default, always)
+
+Purpose: You asked to “stick with currency already setup (main myr)”. That’s a product rule, so we enforce it centrally, not scattered across components.
+
+
+2.1 App config (one place to define MYR default)
+
+```
+TypeScript// src/config/money.ts
+import type { CurrencyCode } from "@/domain/invoice/invoice.types";
+
+export const DEFAULT_CURRENCY: CurrencyCode = "MYR";
+
+export function formatMoney(amount: number, currency: CurrencyCode = DEFAULT_CURRENCY) {
+  // You can later localize "ms-MY" or "en-MY" depending on preference
+  return new Intl.NumberFormat("en-MY", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(amount);
+}
+```
+
+Rule: any new invoice draft starts with `currency: "MYR"` unless explicitly overridden by an allowed template.
+
+
+3) Template System (auto-default + custom templates)
+
+Purpose: “Auto set as template” + “we can setup own template just for faster fill” = a Template Manager with:
+
+- A built-in default template (auto-applied)
+- User-created templates (save/load)
+- “Set as default” per user
+
+
+3.1 Template store (simple + fast): LocalStorage-backed repository
+
+Start here; later you can swap to DB without rewriting UI (Repository Pattern).
+
+```
+TypeScript// src/domain/template/template.repo.ts
+export type InvoiceTemplate = {
+  id: string;
+  name: string;
+  isDefault?: boolean;
+  draftPatch: Partial<import("@/domain/invoice/invoice.types").InvoiceDraft>;
+};
+
+const KEY = "invoice.templates.v1";
+
+export function loadTemplates(): InvoiceTemplate[] {
+  const raw = localStorage.getItem(KEY);
+  return raw ? (JSON.parse(raw) as InvoiceTemplate[]) : [];
+}
+
+export function saveTemplates(list: InvoiceTemplate[]) {
+  localStorage.setItem(KEY, JSON.stringify(list));
+}
+
+export function getDefaultTemplate(templates: InvoiceTemplate[]) {
+  return templates.find(t => t.isDefault) ?? null;
+}
+```
+
+
+3.2 Auto-apply template when creating invoice
+
+This is the “auto set as template” behavior.
+
+```
+TypeScript// src/domain/invoice/invoice.factory.ts
+import { DEFAULT_CURRENCY } from "@/config/money";
+import { getDefaultTemplate, loadTemplates } from "@/domain/template/template.repo";
+import type { InvoiceDraft } from "./invoice.types";
+
+export function createNewInvoiceDraft(): InvoiceDraft {
+  const templates = loadTemplates();
+  const def = getDefaultTemplate(templates);
+
+  const base: InvoiceDraft = {
+    templateId: def?.id ?? null,
+    currency: DEFAULT_CURRENCY,
+    invoiceNo: "",
+    issueDate: new Date().toISOString().slice(0, 10),
+    seller: { name: "" },
+    buyer: { name: "" },
+    items: [],
+  };
+
+  return def ? { ...base, ...def.draftPatch, templateId: def.id } : base;
+}
+```
+
+Outcome: New invoice opens already filled with the default template (seller info, notes, etc.), but still editable.
+
+
+4) Form Structure Refactor (proper structure + validation)
+
+Purpose: Your current form feels “not proper” because it’s likely mixing state updates, calculations, and UI in one place. Enterprise fix: split into:
+
+- Form state (React Hook Form)
+- Validation (Zod)
+- Section components (Seller/Buyer/Items/Notes)
+- Derived totals (pure functions)
+
+
+4.1 Validation schema (Zod)
+
+```
+TypeScript// src/domain/invoice/invoice.schema.ts
+import { z } from "zod";
+
+export const lineItemSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, "Service name is required"),
+  description: z.string().optional(),
+  quantity: z.number().min(1),
+  unitPrice: z.number().min(0),
+});
+
+export const invoiceDraftSchema = z.object({
+  currency: z.literal("MYR"),
+  invoiceNo: z.string().min(1, "Invoice no is required"),
+  issueDate: z.string().min(1),
+  dueDate: z.string().optional(),
+  seller: z.object({ name: z.string().min(1), address: z.string().optional() }),
+  buyer: z.object({ name: z.string().min(1), address: z.string().optional() }),
+  items: z.array(lineItemSchema).min(1, "At least 1 item required"),
+  notes: z.string().optional(),
+  terms: z.string().optional(),
+});
+```
+
+
+4.2 Form shell using FormProvider
+
+```
+React// src/pages/InvoicePage/InvoiceFormShell.tsx
+import { FormProvider, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { invoiceDraftSchema } from "@/domain/invoice/invoice.schema";
+import type { InvoiceDraft } from "@/domain/invoice/invoice.types";
+
+export function InvoiceFormShell({ initial, children, onSubmit }: {
+  initial: InvoiceDraft;
+  children: React.ReactNode;
+  onSubmit: (data: InvoiceDraft) => void;
+}) {
+  const methods = useForm<InvoiceDraft>({
+    defaultValues: initial,
+    resolver: zodResolver(invoiceDraftSchema),
+    mode: "onChange",
+  });
+
+  return (
+    <FormProvider {...methods}>
+      <form onSubmit={methods.handleSubmit(onSubmit)} className="space-y-6">
+        {children}
+      </form>
+    </FormProvider>
+  );
+}
+```
+
+Outcome: “Proper structure” = each section is a component that reads/writes RHF fields cleanly, with consistent validation.
+
+
+5) Drag-and-Drop Reorder for Services/Items (must not break RHF)
+
+Purpose: You need to drag to arrange services menu. The reliable pattern is:
+
+- `useFieldArray` for items
+- `dnd-kit` Sortable for UI
+- on drag end → call `move(from, to)` from RHF (this keeps form state consistent)
+
+
+5.1 Items controller with RHF + reorder
+
+```
+React// src/pages/InvoicePage/ItemsSection.tsx
+import { useFieldArray, useFormContext } from "react-hook-form";
+import type { InvoiceDraft } from "@/domain/invoice/invoice.types";
+
+export function ItemsSection() {
+  const { control } = useFormContext<InvoiceDraft>();
+  const { fields, append, remove, move } = useFieldArray({ control, name: "items" });
+
+  // move(from, to) will be called from DnD handler (next snippet)
+  return (
+    <div>
+      {/* items list UI here */}
+      <button
+        type="button"
+        onClick={() => append({ id: crypto.randomUUID(), name: "", quantity: 1, unitPrice: 0 })}
+      >
+        Add Service
+      </button>
+    </div>
+  );
+}
+```
+
+
+5.2 DnD handler (dnd-kit) calling `move`
+
+```
+React// src/pages/InvoicePage/items.dnd.tsx
+import { DndContext } from "@dnd-kit/core";
+import { SortableContext, arrayMove } from "@dnd-kit/sortable";
+
+export function ItemsDnD({ ids, onReorder, children }: {
+  ids: string[];
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <DndContext
+      onDragEnd={(e) => {
+        const { active, over } = e;
+        if (!over || active.id === over.id) return;
+
+        const from = ids.indexOf(String(active.id));
+        const to = ids.indexOf(String(over.id));
+        if (from >= 0 && to >= 0) onReorder(from, to);
+      }}
+    >
+      <SortableContext items={ids}>
+        {children}
+      </SortableContext>
+    </DndContext>
+  );
+}
+```
+
+How this connects (no magic step skipped):
+
+- Your items render with `id`
+- `ids = fields.map(f => f.id)`
+- `onReorder(from,to)` calls RHF `move(from,to)`
+- That updates the actual form `items[]` order (the correct enterprise-safe approach)
+
+
+6) Excel Attachment Import (invoice format adapter)
+
+Purpose: Excel is an external source; we treat it as an Adapter that outputs `InvoiceDraft`. We also add a “preview + confirm” step to avoid corrupt imports.
+
+
+6.1 Parsing Excel using SheetJS (xlsx)
+
+```
+TypeScript// src/features/import/excel/importInvoiceFromExcel.ts
+import * as XLSX from "xlsx";
+import type { InvoiceDraft } from "@/domain/invoice/invoice.types";
+import { DEFAULT_CURRENCY } from "@/config/money";
+
+export async function importInvoiceFromExcel(file: File): Promise<Partial<InvoiceDraft>> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array" });
+
+  // Example: you’ll confirm sheet names/columns from your file
+  const info = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets["Invoice"] ?? wb.Sheets[wb.SheetNames[0]]);
+  const items = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets["Items"] ?? wb.Sheets[wb.SheetNames[1]]);
+
+  return {
+    currency: DEFAULT_CURRENCY,
+    buyer: { name: String(info?.[0]?.BuyerName ?? "") },
+    seller: { name: String(info?.[0]?.SellerName ?? "") },
+    invoiceNo: String(info?.[0]?.InvoiceNo ?? ""),
+    issueDate: String(info?.[0]?.IssueDate ?? ""),
+    items: items.map((r) => ({
+      id: crypto.randomUUID(),
+      name: String(r.Service ?? r.Name ?? ""),
+      description: String(r.Description ?? ""),
+      quantity: Number(r.Qty ?? 1),
+      unitPrice: Number(r.UnitPrice ?? r.Price ?? 0),
+    })),
+  };
+}
+```
+
+Next step (important): you’ll tell me the actual sheet names + column headers from `invoice_data_1stdev.xlsx`, and I’ll tighten the mapping so it’s exact (no guesswork).
+
+
+7) Picture Attachment → Instant Invoice (OCR + extraction pipeline)
+
+Purpose: “picture attach for instant invoice” is best implemented as a 2-step pipeline:
+
+- OCR extract raw text (client or server)
+- Parse text into structured `Partial<InvoiceDraft>` with confidence + user review
+
+
+7.1 OCR step (client-side option: Tesseract.js)
+
+```
+TypeScript// src/features/import/image/ocr.ts
+import Tesseract from "tesseract.js";
+
+export async function ocrImageToText(file: File): Promise<string> {
+  const { data } = await Tesseract.recognize(file, "eng");
+  return data.text;
+}
+```
+
+
+7.2 Parse step (simple deterministic parser first)
+
+```
+TypeScript// src/features/import/image/parseInvoiceText.ts
+import type { InvoiceDraft } from "@/domain/invoice/invoice.types";
+import { DEFAULT_CURRENCY } from "@/config/money";
+
+export function parseInvoiceTextToDraft(text: string): Partial<InvoiceDraft> {
+  // Start deterministic: regex for invoice no, dates, totals, etc.
+  const invoiceNo = text.match(/Invoice\s*(No|#)\s*[:\-]?\s*(\S+)/i)?.[2] ?? "";
+  const buyerName = text.match(/Bill(?:ed)?\s*To\s*[:\-]?\s*(.+)/i)?.[1]?.trim() ?? "";
+
+  return {
+    currency: DEFAULT_CURRENCY,
+    invoiceNo,
+    buyer: { name: buyerName },
+  };
+}
+```
+
+Enterprise-grade behavior: after import, open a review screen highlighting fields extracted with low confidence, instead of silently populating wrong values.
+
+
+8) Putting It Together (the user flow story)
+
+Purpose: Make the UX match what you described.
+
+
+8.1 “New Invoice” flow
+
+- `createNewInvoiceDraft()` runs
+- Auto-applies default template patch
+- Opens structured form sections
+- Items are reorderable via drag-and-drop
+- Currency shown as MYR (locked or defaulted)
+
+
+8.2 “Import from Excel” flow
+
+- Upload Excel → parse → produce `Partial<InvoiceDraft>`
+- Show import preview
+- On confirm → `reset({ ...currentDraft, ...importedPatch })`
+
+
+8.3 “Instant invoice from picture” flow
+
+- Upload image → OCR → parse → patch
+- Show review screen (because OCR is imperfect)
+- Confirm → merge into draft
+
+
+9) QA / Reliability Checklist (so it doesn’t regress)
+
+Purpose: These are the failures that typically happen in invoice builders.
+
+
+9.1 Must-test cases
+
+- Drag reorder keeps quantities/prices attached to the correct service
+- Import merges don’t wipe manual user edits unexpectedly (define merge strategy)
+- MYR formatting always consistent (2 decimals, correct symbol)
+- Excel with missing sheet/columns shows actionable error
+- OCR result that can’t parse still creates a draft safely (no crash)
+
+
+9.2 Recommended automated tests
+
+- Unit tests: `parseInvoiceTextToDraft`, `importInvoiceFromExcel` mapping
+- Component tests: Items reorder calling RHF `move`
+- E2E: create invoice → reorder → export/print
+
+
+2 Quick Clarifying Inputs (so I map your Excel + image correctly)
+
+- In `invoice_data_1stdev.xlsx`, what are the sheet names and exact column headers for:
+
+  - invoice info (invoiceNo, dates, buyer/seller)
+  - items (service name, qty, unit price, description)
+- For the “picture instant invoice”: do you want
+
+  - OCR on the browser (fast to ship, variable accuracy), or
+  - OCR on server (more accurate + secure, but needs backend)?
+
+Reply with those 2 details and I’ll produce the next step: the exact Excel mapping + the review/merge UI wiring (again, only relevant code per part, no full dumps).

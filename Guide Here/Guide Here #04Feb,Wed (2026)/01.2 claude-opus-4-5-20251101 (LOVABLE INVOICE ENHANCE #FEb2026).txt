@@ -1,0 +1,347 @@
+📝 Part 7: Enhanced Form Structure
+
+Purpose: Properly organized form with clear sections, validation, and integration with all the above components.
+
+```
+React// src/pages/EnhancedReceiptPage.jsx
+import React, { useState, useEffect } from 'react';
+import { InvoiceProvider, useInvoice } from '../contexts/InvoiceContext';
+import TemplateManager from '../components/TemplateManager';
+import DraggableItemList from '../components/DraggableItemList';
+import InstantInvoiceUploader from '../components/InstantInvoiceUploader';
+import { parseExcelForInvoice } from '../utils/excelImportHandler';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Building2, 
+  User, 
+  FileSpreadsheet, 
+  Receipt,
+  Download,
+  Save
+} from 'lucide-react';
+
+// Form Section Component for consistent styling
+const FormSection = ({ title, icon: Icon, children }) => (
+  <Card className="mb-4">
+    <CardHeader className="pb-3">
+      <CardTitle className="text-base flex items-center gap-2">
+        {Icon && <Icon className="h-4 w-4" />}
+        {title}
+      </CardTitle>
+    </CardHeader>
+    <CardContent>{children}</CardContent>
+  </Card>
+);
+
+// Main Form Content
+const InvoiceFormContent = () => {
+  const { 
+    currency, 
+    activeTemplate, 
+    autoTemplateEnabled,
+    items,
+    setItems 
+  } = useInvoice();
+
+  // Form state
+  const [formData, setFormData] = useState({
+    yourCompany: {
+      name: '',
+      address: '',
+      phone: '',
+      email: '',
+    },
+    billTo: {
+      name: '',
+      address: '',
+      phone: '',
+      email: '',
+    },
+    invoiceNumber: '',
+    invoiceDate: new Date().toISOString().split('T')[0],
+    dueDate: '',
+    notes: '',
+    terms: '',
+  });
+
+  // Auto-fill from template when enabled
+  useEffect(() => {
+    if (autoTemplateEnabled && activeTemplate?.data) {
+      setFormData(prev => ({
+        ...prev,
+        ...activeTemplate.data,
+        yourCompany: {
+          ...prev.yourCompany,
+          ...activeTemplate.data.yourCompany,
+        },
+      }));
+    }
+  }, [activeTemplate, autoTemplateEnabled]);
+
+  // Handle form field changes
+  const handleChange = (section, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSimpleChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Handle template apply
+  const handleTemplateApply = (templateData) => {
+    setFormData(prev => ({
+      ...prev,
+      ...templateData,
+    }));
+  };
+
+  // Handle Excel import
+  const handleExcelImport = async (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      try {
+        const parsed = await parseExcelForInvoice(file);
+        setFormData(prev => ({
+          ...prev,
+          ...parsed.invoiceInfo,
+        }));
+        if (parsed.items?.length > 0) {
+          setItems(parsed.items);
+        }
+      } catch (error) {
+        console.error('Excel import failed:', error);
+      }
+    }
+  };
+
+  // Handle image extraction
+  const handleImageExtracted = (data) => {
+    setFormData(prev => ({
+      ...prev,
+      invoiceNumber: data.invoiceNumber || prev.invoiceNumber,
+      invoiceDate: data.invoiceDate || prev.invoiceDate,
+    }));
+    if (data.items?.length > 0) {
+      setItems(data.items);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto p-6">
+      <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
+        <Receipt className="h-6 w-6" />
+        Invoice Generator
+        <span className="ml-auto text-sm font-normal bg-primary/10 text-primary px-2 py-1 rounded">
+          {currency}
+        </span>
+      </h1>
+
+      {/* Template Manager */}
+      <TemplateManager 
+        currentFormData={formData} 
+        onTemplateApply={handleTemplateApply}
+      />
+
+      {/* Import Options */}
+      <Tabs defaultValue="manual" className="mb-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+          <TabsTrigger value="excel">
+            <FileSpreadsheet className="h-4 w-4 mr-1" />
+            Excel Import
+          </TabsTrigger>
+          <TabsTrigger value="image">
+            <Receipt className="h-4 w-4 mr-1" />
+            From Image
+          </TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="excel" className="mt-4">
+          <Card>
+            <CardContent className="pt-4">
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleExcelImport}
+                className="block w-full text-sm text-gray-500
+                  file:mr-4 file:py-2 file:px-4
+                  file:rounded-full file:border-0
+                  file:text-sm file:font-semibold
+                  file:bg-primary file:text-white
+                  hover:file:bg-primary/90"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Upload Excel file with Invoice Info and Items sheets
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="image" className="mt-4">
+          <InstantInvoiceUploader onDataExtracted={handleImageExtracted} />
+        </TabsContent>
+      </Tabs>
+
+      {/* Your Company Section */}
+      <FormSection title="Your Company" icon={Building2}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            placeholder="Company Name"
+            value={formData.yourCompany.name}
+            onChange={(e) => handleChange('yourCompany', 'name', e.target.value)}
+          />
+          <Input
+            placeholder="Phone"
+            value={formData.yourCompany.phone}
+            onChange={(e) => handleChange('yourCompany', 'phone', e.target.value)}
+          />
+          <Input
+            placeholder="Email"
+            type="email"
+            value={formData.yourCompany.email}
+            onChange={(e) => handleChange('yourCompany', 'email', e.target.value)}
+          />
+          <Input
+            placeholder="Address"
+            value={formData.yourCompany.address}
+            onChange={(e) => handleChange('yourCompany', 'address', e.target.value)}
+          />
+        </div>
+      </FormSection>
+
+      {/* Bill To Section */}
+      <FormSection title="Bill To" icon={User}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            placeholder="Customer Name"
+            value={formData.billTo.name}
+            onChange={(e) => handleChange('billTo', 'name', e.target.value)}
+          />
+          <Input
+            placeholder="Customer Phone"
+            value={formData.billTo.phone}
+            onChange={(e) => handleChange('billTo', 'phone', e.target.value)}
+          />
+          <Input
+            placeholder="Customer Email"
+            type="email"
+            value={formData.billTo.email}
+            onChange={(e) => handleChange('billTo', 'email', e.target.value)}
+          />
+          <Input
+            placeholder="Customer Address"
+            value={formData.billTo.address}
+            onChange={(e) => handleChange('billTo', 'address', e.target.value)}
+          />
+        </div>
+      </FormSection>
+
+      {/* Invoice Details Section */}
+      <FormSection title="Invoice Details" icon={FileSpreadsheet}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Invoice Number</label>
+            <Input
+              placeholder="INV-001"
+              value={formData.invoiceNumber}
+              onChange={(e) => handleSimpleChange('invoiceNumber', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Invoice Date</label>
+            <Input
+              type="date"
+              value={formData.invoiceDate}
+              onChange={(e) => handleSimpleChange('invoiceDate', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Due Date</label>
+            <Input
+              type="date"
+              value={formData.dueDate}
+              onChange={(e) => handleSimpleChange('dueDate', e.target.value)}
+            />
+          </div>
+        </div>
+      </FormSection>
+
+      {/* Draggable Items Section */}
+      <Card className="mb-4">
+        <CardContent className="pt-6">
+          <DraggableItemList />
+        </CardContent>
+      </Card>
+
+      {/* Notes & Terms */}
+      <FormSection title="Additional Information">
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Notes</label>
+            <Textarea
+              placeholder="Additional notes for the customer..."
+              value={formData.notes}
+              onChange={(e) => handleSimpleChange('notes', e.target.value)}
+              rows={3}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Terms & Conditions</label>
+            <Textarea
+              placeholder="Payment terms, conditions..."
+              value={formData.terms}
+              onChange={(e) => handleSimpleChange('terms', e.target.value)}
+              rows={3}
+            />
+          </div>
+        </div>
+      </FormSection>
+
+      {/* Action Buttons */}
+      <div className="flex gap-3 mt-6">
+        <Button className="flex-1">
+          <Download className="h-4 w-4 mr-2" />
+          Generate Invoice (PDF)
+        </Button>
+        <Button variant="outline">
+          <Save className="h-4 w-4 mr-2" />
+          Save as Template
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+// Wrapped with Provider
+const EnhancedReceiptPage = () => (
+  <InvoiceProvider>
+    <InvoiceFormContent />
+  </InvoiceProvider>
+);
+
+export default EnhancedReceiptPage;
+```
+
+
+🎯 Summary of Enhancements
+
+FeatureImplementationStatusAuto Template`TemplateManager` with default templates✅Custom TemplatesSave current form as template✅Excel Import`excelImportHandler.js` parser✅Image Instant Invoice`InstantInvoiceUploader` with dropzone✅Improved Form StructureSectioned cards with `FormSection`✅MYR Currency DefaultContext-based, always defaults to MYR✅Drag-and-Drop Items`DraggableItemList` with @dnd-kit✅
+
+
+📦 Dependencies to Install
+
+```
+Bashnpm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities react-dropzone xlsx react-hook-form
+```
+
+Would you like me to elaborate on any specific part, add validation rules, or show the preview/PDF generation component next?

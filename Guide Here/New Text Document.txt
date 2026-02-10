@@ -1,0 +1,6 @@
+https://www.bing.com/search?q=gmail&cvid=9b759c964bdd4755baeadd5159caa3ba&gs_lcrp=EgRlZGdlKgkIABBFGDsY-QcyCQgAEEUYOxj5BzIGCAEQRRg5MgYIAhBFGD0yBggDEEUYPTIGCAQQRRhBMgYIBRBFGEHSAQgxMTQ3ajBqMagCALACAQ&FORM=ANNTA1&PC=ASTS
+https://mail.google.com/mail/u/0/?hl=en-GB#inbox
+https://docs.google.com/spreadsheets/d/1bmC-1nZBELFiyZz4ARXiYNXhLukB0SAQaRKHD-qVEB8/edit?gid=2137758088#gid=2137758088
+https://docs.google.com/spreadsheets/d/1RVNltwaexwaMtSVlCbDeR5qsnyg0gmh0lApr_dKAcsQ/edit?gid=391415266#gid=391415266
+https://anotepad.com/
+http://localhost:8080/Invoicepage/#/receipt
