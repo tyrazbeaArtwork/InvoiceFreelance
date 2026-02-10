@@ -560,7 +560,7 @@ const Index = () => {
                 onClick={() => handleTemplateClick(index + 1)}
               >
                 <img
-                  src={`/Invoicepage/assets/template${index + 1}-preview.png`}
+                  src={`${import.meta.env.BASE_URL}assets/template${index + 1}-preview.png`}
                   alt={template.name}
                   className={`w-full ${template.name === "Template 10"
                     ? "h-[38px] w-[57px]"

@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080, // No quotes around the port number
   },
-  base: "/Invoicepage/",  // Ensure your app is served correctly on GitHub Pages
+  base: "/InvoiceFreelance/",  // Ensure your app is served correctly on GitHub Pages
   build: {
     outDir: 'dist', // Ensure the build files are in the 'dist' folder
   },

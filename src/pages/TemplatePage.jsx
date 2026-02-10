@@ -74,14 +74,21 @@ const TemplatePage = () => {
           {templates.map((template, index) => (
             <div
               key={index}
-              className={`cursor-pointer p-4 border rounded ${
-                currentTemplate === index + 1
-                  ? "border-blue-500"
-                  : "border-gray-300"
-              }`}
+              className={`cursor-pointer p-2 border rounded-lg transition-all min-w-[100px] flex flex-col items-center ${currentTemplate === index + 1
+                  ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200"
+                  : "border-gray-200 hover:border-blue-300 hover:shadow-md"
+                }`}
               onClick={() => handleTemplateChange(index + 1)}
             >
-              {template.name}
+              <img
+                src={`${import.meta.env.BASE_URL}assets/template${index + 1}-preview.png`}
+                alt={template.name}
+                className="w-20 h-28 object-cover rounded mb-2 border border-gray-100"
+              />
+              <span className={`text-xs font-medium ${currentTemplate === index + 1 ? "text-blue-700" : "text-gray-600"
+                }`}>
+                {template.name}
+              </span>
             </div>
           ))}
         </div>
